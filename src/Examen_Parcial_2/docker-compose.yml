@@ -1,0 +1,17 @@
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mysql_logiexpress
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-secret}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-logiexpress}
+    ports:
+      - "${MYSQL_PORT:-3008}:3306"
+    volumes:
+      - logiexpress_mysql_data:/var/lib/mysql
+
+volumes:
+  logiexpress_mysql_data:
