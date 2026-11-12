@@ -1,0 +1,377 @@
+{
+  "info": {
+    "name": "LogiExpress - Examen Parcial 2",
+    "description": "Pruebas de los 6 endpoints del examen. Ejecutar en orden sobre una base recién creada (docker compose down -v && docker compose up -d --build). La API corre con: npm run dev:examen",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3001/api" },
+    { "key": "envioCreadoId", "value": "2" }
+  ],
+  "item": [
+    {
+      "name": "0. Status de la API",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/status"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. POST /envios",
+      "item": [
+        {
+          "name": "1.1 Crear envío con paquetes (201)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/envios",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"remitenteDircId\": 3,\n  \"destinatarioDircId\": 2,\n  \"costoTotal\": 980.00,\n  \"paquetes\": [\n    { \"peso\": 4.2, \"largo\": 40, \"ancho\": 30, \"contenido\": \"Monitores LED\", \"almacenId\": 2 },\n    { \"peso\": 0.8, \"largo\": 20, \"ancho\": 15, \"contenido\": \"Cables y accesorios\" }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('Envío REGISTRADO con 2 paquetes', () => {",
+                  "  pm.expect(body.data.estado).to.eql('REGISTRADO');",
+                  "  pm.expect(body.data.paquetes).to.have.lengthOf(2);",
+                  "});",
+                  "pm.collectionVariables.set('envioCreadoId', body.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 Crear envío con paquete en almacén lleno (400 - trigger, rollback)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/envios",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"remitenteDircId\": 1,\n  \"destinatarioDircId\": 4,\n  \"costoTotal\": 300.00,\n  \"paquetes\": [\n    { \"peso\": 1.0, \"largo\": 10, \"ancho\": 10, \"contenido\": \"Paquete que no cabe\", \"almacenId\": 1 }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request por SQLSTATE 45000', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje del trigger', () => pm.expect(pm.response.json().message).to.include('Capacidad'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.3 Crear envío sin paquetes (400 - validación)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/envios",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"remitenteDircId\": 1,\n  \"destinatarioDircId\": 3,\n  \"costoTotal\": 100,\n  \"paquetes\": []\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. PUT /envios/:id/costo",
+      "item": [
+        {
+          "name": "2.1 Actualizar costo del envío 2 (200 - trigger auditoría)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/envios/2/costo",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"costoTotal\": 1350.75\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('Costo actualizado', () => pm.expect(Number(data.costoTotal)).to.eql(1350.75));",
+                  "pm.test('Auditoría registrada por el trigger', () => {",
+                  "  pm.expect(data.auditorias.length).to.be.above(0);",
+                  "  pm.expect(Number(data.auditorias[0].costoNuevo)).to.eql(1350.75);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.2 Actualizar costo de envío inexistente (404)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/envios/9999/costo",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"costoTotal\": 500\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. POST /almacenes/:id/paquetes",
+      "item": [
+        {
+          "name": "3.1 Asignar paquete al almacén 2 (201)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/almacenes/2/paquetes",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"envioId\": {{envioCreadoId}},\n  \"peso\": 2.3,\n  \"largo\": 25,\n  \"ancho\": 20,\n  \"contenido\": \"Tarjetas de red\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Paquete en almacén 2', () => pm.expect(pm.response.json().data.paquete.almacenId).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.2 Asignar paquete al almacén 1 lleno (400 - trigger capacidad)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/almacenes/1/paquetes",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"envioId\": 1,\n  \"peso\": 1.5,\n  \"largo\": 20,\n  \"ancho\": 15,\n  \"contenido\": \"Paquete extra\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request por SQLSTATE 45000', () => pm.response.to.have.status(400));",
+                  "pm.test('Mensaje del trigger', () => pm.expect(pm.response.json().message).to.include('Capacidad'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.3 Asignar paquete a almacén inexistente (404)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/almacenes/9999/paquetes",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"envioId\": 1,\n  \"peso\": 1.5,\n  \"largo\": 20,\n  \"ancho\": 15,\n  \"contenido\": \"Paquete extra\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. POST /envios/:id/rastreo",
+      "item": [
+        {
+          "name": "4.1 Rastreo EN_TRANSITO del envío creado (201)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/envios/{{envioCreadoId}}/rastreo",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ubicacionActual\": \"Almacén Norte LogiExpress\",\n  \"estadoEvento\": \"EN_TRANSITO\",\n  \"observaciones\": \"Salida a ruta local\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('El envío no se marca como entregado', () => pm.expect(pm.response.json().data.envio.estado).to.not.eql('ENTREGADO'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.2 Rastreo ENTREGADO del envío 1 (201 - trigger estado)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/envios/1/rastreo",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ubicacionActual\": \"Av. Paseo de Montejo #301, Centro\",\n  \"estadoEvento\": \"ENTREGADO\",\n  \"observaciones\": \"Recibido por el destinatario\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Trigger actualizó el envío a ENTREGADO', () => pm.expect(pm.response.json().data.envio.estado).to.eql('ENTREGADO'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.3 Rastreo con estado inválido (400)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/envios/1/rastreo",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ubicacionActual\": \"Mérida\",\n  \"estadoEvento\": \"PERDIDO\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. GET /envios (activos)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/envios"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "const envios = pm.response.json().data;",
+              "pm.test('Solo REGISTRADO o EN_TRANSITO', () => envios.forEach(e => pm.expect(['REGISTRADO', 'EN_TRANSITO']).to.include(e.estado)));",
+              "pm.test('Incluye clientes y paquetes', () => envios.forEach(e => {",
+              "  pm.expect(e.remitente.cliente).to.be.an('object');",
+              "  pm.expect(e.destinatario.cliente).to.be.an('object');",
+              "  pm.expect(e.paquetes).to.be.an('array');",
+              "}));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. GET /clientes/:id/envios",
+      "item": [
+        {
+          "name": "6.1 Historial de envíos del cliente 1 (200)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/clientes/1/envios"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const data = pm.response.json().data;",
+                  "pm.test('Envíos vinculados al cliente 1', () => {",
+                  "  pm.expect(data.envios.length).to.be.above(0);",
+                  "  data.envios.forEach(e => pm.expect([e.remitente.clienteId, e.destinatario.clienteId]).to.include(1));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6.2 Cliente inexistente (404)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/clientes/9999/envios"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

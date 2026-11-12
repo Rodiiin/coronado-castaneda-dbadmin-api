@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "dev:examen": "tsx watch src/Examen_Parcial_2/server.ts",
     "build": "tsc",
     "start": "node dist/server.js"
   },
